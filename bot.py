@@ -23,47 +23,85 @@ def send_message(chat_id, text):
     except Exception as e:
         log_message(f"❌ Error: {e}")
 
-def get_gold_price():
-    """جلب سعر الذهب من مصادر متعددة"""
+def get_live_gold_price():
+    """جلب السعر المباشر الفعلي للذهب بالدقيقة"""
     try:
-        # الطريقة 1: Google Finance API
-        response = requests.get(
-            "https://www.google.com/finance/quote/XAU-USD",
-            timeout=5
-        )
+        # المصدر 1: Finnhub (موثوق جداً)
+        try:
+            response = requests.get(
+                "https://finnhub.io/api/v1/quote?symbol=XAUUSD&token=demo",
+                timeout=5
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if "c" in data:  # current price
+                    price = float(data["c"])
+                    if price > 0:
+                        log_message(f"✅ Got price from Finnhub: ${price}")
+                        return round(price, 2)
+        except Exception as e:
+            log_message(f"⚠️ Finnhub error: {e}")
         
-        if response.status_code == 200:
-            # محاولة استخراج السعر من HTML
-            if '"currentPrice":[' in response.text:
-                start = response.text.find('"currentPrice":[') + len('"currentPrice":[')
-                end = response.text.find(']', start)
-                price_text = response.text[start:end].strip()
-                price = float(price_text)
-                return round(price, 2)
+        # المصدر 2: Metals API (متخصصة في المعادن)
+        try:
+            response = requests.get(
+                "https://api.metals.live/v1/spot/gold",
+                timeout=5
+            )
+            if response.status_code == 200:
+                data = response.json()
+                price = float(data.get("price", 0))
+                if price > 0:
+                    log_message(f"✅ Got price from Metals API: ${price}")
+                    return round(price, 2)
+        except Exception as e:
+            log_message(f"⚠️ Metals API error: {e}")
         
-        # الطريقة 2: API بديلة
-        response = requests.get(
-            "https://api.metals.live/v1/spot/gold",
-            timeout=5
-        )
+        # المصدر 3: Twelve Data API
+        try:
+            response = requests.get(
+                "https://api.twelvedata.com/quote?symbol=XAUUSD&apikey=demo",
+                timeout=5
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if "price" in data:
+                    price = float(data["price"])
+                    if price > 0:
+                        log_message(f"✅ Got price from Twelve Data: ${price}")
+                        return round(price, 2)
+        except Exception as e:
+            log_message(f"⚠️ Twelve Data error: {e}")
         
-        if response.status_code == 200:
-            data = response.json()
-            if "price" in data:
-                return round(data["price"], 2)
+        # المصدر 4: Alpha Vantage
+        try:
+            response = requests.get(
+                "https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=XAU&to_currency=USD&apikey=demo",
+                timeout=5
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if "Realtime Currency Exchange Rate" in data:
+                    price = float(data["Realtime Currency Exchange Rate"]["5. Exchange Rate"])
+                    if price > 0:
+                        log_message(f"✅ Got price from Alpha Vantage: ${price}")
+                        return round(price, 2)
+        except Exception as e:
+            log_message(f"⚠️ Alpha Vantage error: {e}")
         
-        # الطريقة 3: استخدام بيانات ثابتة آخر سعر معروف إذا فشلت جميع الطرق
-        return 4396.00  # آخر سعر معروف
+        log_message("⚠️ All APIs failed, using fallback price")
+        return None
         
     except Exception as e:
-        log_message(f"⚠️ Gold price fetch error: {e}")
-        return 4396.00  # سعر افتراضي
+        log_message(f"❌ Gold price error: {e}")
+        return None
 
 def calculate_analysis(current_price):
-    """حساب نقاط التحليل"""
-    if current_price is None:
+    """حساب نقاط التحليل بناءً على السعر الفعلي"""
+    if current_price is None or current_price <= 0:
         return None
     
+    # ATR = 0.5% من السعر الحالي
     atr = current_price * 0.005
     stop_loss = round(current_price - atr, 2)
     take_profit = round(current_price + (atr * 2), 2)
@@ -73,7 +111,8 @@ def calculate_analysis(current_price):
         "stop_loss": stop_loss,
         "take_profit": take_profit,
         "risk": round(current_price - stop_loss, 2),
-        "reward": round(take_profit - current_price, 2)
+        "reward": round(take_profit - current_price, 2),
+        "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }
 
 def handle_command(chat_id, command):
@@ -87,7 +126,7 @@ def handle_command(chat_id, command):
             "✅ التحليل الفني المتقدم\n"
             "✅ دمج 5 مؤشرات فنية\n"
             "✅ إدارة رأس المال احترافية\n"
-            "✅ أسعار حقيقية\n\n"
+            "✅ أسعار حقيقية مباشرة\n\n"
             "📚 <b>الأوامر:</b>\n"
             "/help - المساعدة\n"
             "/status - حالة البوت\n"
@@ -102,15 +141,15 @@ def handle_command(chat_id, command):
             "/start - البدء\n"
             "/help - المساعدة\n"
             "/status - الحالة\n"
-            "/analyze - التحليل بأسعار حقيقية\n\n"
+            "/analyze - التحليل بسعر فعلي مباشر\n\n"
             "💰 <b>الإعدادات:</b>\n"
             "• مخاطرة: 3%\n"
             "• حد أدنى: $100\n"
             "• حد أقصى: $500\n\n"
             "📊 <b>الميزات:</b>\n"
-            "• أسعار حقيقية من السوق\n"
-            "• تحليل فني متقدم\n"
-            "• نقاط دخول/خروج ديناميكية"
+            "• أسعار حقيقية مباشرة\n"
+            "• بيانات محدثة بالدقيقة\n"
+            "• نقاط دخول/خروج دقيقة"
         )
     
     elif command == "/status":
@@ -119,33 +158,39 @@ def handle_command(chat_id, command):
             "📊 <b>الحالة:</b>\n"
             "├─ الاتصال: متصل ✅\n"
             "├─ الرمز: XAUUSD\n"
-            "├─ البيانات: حقيقية 📈\n"
+            "├─ البيانات: حقيقية مباشرة 📈\n"
             "└─ الموثوقية: 99%"
         )
     
     elif command == "/analyze":
-        current_price = get_gold_price()
+        current_price = get_live_gold_price()
         
-        if current_price is None or current_price == 0:
-            text = "❌ خطأ في جلب سعر الذهب\n\nحاول لاحقاً"
+        if current_price is None:
+            text = (
+                "❌ <b>لم نتمكن من جلب السعر الحالي</b>\n\n"
+                "يرجى المحاولة لاحقاً\n"
+                "تأكد من الاتصال بالإنترنت"
+            )
         else:
             analysis = calculate_analysis(current_price)
             
             text = (
-                "📊 <b>تحليل الذهب الحالي (XAUUSD):</b>\n\n"
-                f"💰 <b>السعر الحالي: ${analysis['current']:,.2f}</b>\n\n"
+                "📊 <b>تحليل الذهب الحي الآن:</b>\n\n"
+                f"<b>⏰ الوقت: {analysis['timestamp']}</b>\n"
+                f"<b>💰 السعر الحالي: ${analysis['current']:,.2f}</b>\n\n"
                 "🟢 <b>إشارة شراء قوية</b>\n"
                 "نسبة التأكيد: 85%\n\n"
                 "📈 <b>نقاط التداول:</b>\n"
                 f"├─ نقطة الدخول: ${analysis['current']:,.2f}\n"
                 f"├─ وقف الخسارة: ${analysis['stop_loss']:,.2f}\n"
                 f"└─ الهدف: ${analysis['take_profit']:,.2f}\n\n"
-                "💰 <b>إدارة المخاطر:</b>\n"
-                f"├─ الحساب: $250\n"
+                "💰 <b>إدارة المخاطر (للحساب $250):</b>\n"
                 f"├─ المخاطرة: 3% = $7.50\n"
                 f"├─ Risk: ${analysis['risk']:.2f}\n"
-                f"└─ Reward: ${analysis['reward']:.2f}\n\n"
-                "⚠️ تذكر: استخدم حساب Demo أولاً"
+                f"├─ Reward: ${analysis['reward']:.2f}\n"
+                f"└─ Risk/Reward: 1:{analysis['reward']/analysis['risk']:.2f}\n\n"
+                "⚠️ تذكر: استخدم حساب Demo أولاً\n"
+                "📌 السعر محدث بالدقيقة الحالية"
             )
     
     else:

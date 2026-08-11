@@ -4,6 +4,7 @@
 import requests
 import time
 from datetime import datetime
+import json
 
 BOT_TOKEN = "8674008828:AAHCoFB_bJmEAmwWkt6rl8q5zKkude2RslQ"
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
@@ -21,126 +22,91 @@ def send_message(chat_id, text):
     except Exception as e:
         log_message(f"ERROR: {e}")
 
-def get_real_gold_price():
-    """Get REAL gold price - no cache, no templates"""
+def get_gold_price():
+    """Get gold price from reliable source"""
     
-    prices = []
-    
-    # Source 1: Direct metals API
     try:
-        log_message("Fetching from metals.live...")
+        # Best source: metals.live - very reliable
+        log_message("Fetching gold price...")
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        
         response = requests.get(
             "https://api.metals.live/v1/spot/gold",
-            timeout=5
+            headers=headers,
+            timeout=10
         )
+        
+        log_message(f"Status: {response.status_code}")
+        
         if response.status_code == 200:
             data = response.json()
-            price = float(data.get("price", 0))
-            if price > 0:
-                log_message(f"metals.live: ${price}")
-                prices.append(price)
-    except Exception as e:
-        log_message(f"metals.live ERROR: {e}")
-    
-    # Source 2: Forex API
-    try:
-        log_message("Fetching from forexapi...")
-        response = requests.get(
-            "https://api.exchangerate-api.com/v4/latest/XAU",
-            timeout=5
-        )
-        if response.status_code == 200:
-            data = response.json()
-            if "rates" in data and "USD" in data["rates"]:
-                rate = float(data["rates"]["USD"])
-                price = 1 / rate if rate > 0 else 0
-                if price > 1000:
-                    log_message(f"forexapi: ${price}")
-                    prices.append(price)
-    except Exception as e:
-        log_message(f"forexapi ERROR: {e}")
-    
-    # Source 3: Twelve Data
-    try:
-        log_message("Fetching from twelvedata...")
-        response = requests.get(
-            "https://api.twelvedata.com/quote?symbol=XAU/USD&apikey=demo",
-            timeout=5
-        )
-        if response.status_code == 200:
-            data = response.json()
-            if "price" in data:
+            log_message(f"Response: {data}")
+            
+            if isinstance(data, dict) and "price" in data:
                 price = float(data["price"])
-                if price > 1000:
-                    log_message(f"twelvedata: ${price}")
-                    prices.append(price)
+                log_message(f"SUCCESS: ${price}")
+                return round(price, 2)
+            elif isinstance(data, dict) and "bid" in data:
+                price = float(data["bid"])
+                log_message(f"SUCCESS: ${price}")
+                return round(price, 2)
+        
+        log_message("Response format error")
+        return None
+        
     except Exception as e:
-        log_message(f"twelvedata ERROR: {e}")
-    
-    # Source 4: Finnhub
-    try:
-        log_message("Fetching from finnhub...")
-        response = requests.get(
-            "https://finnhub.io/api/v1/quote?symbol=XAUUSD&token=cljf96qr01qh3oj01d7g",
-            timeout=5
-        )
-        if response.status_code == 200:
-            data = response.json()
-            if "c" in data:
-                price = float(data["c"])
-                if price > 1000:
-                    log_message(f"finnhub: ${price}")
-                    prices.append(price)
-    except Exception as e:
-        log_message(f"finnhub ERROR: {e}")
-    
-    # Return average if got multiple sources
-    if prices:
-        avg_price = sum(prices) / len(prices)
-        log_message(f"FINAL PRICE: ${avg_price:.2f}")
-        return round(avg_price, 2)
-    
-    log_message("ERROR: No sources available")
-    return None
+        log_message(f"Exception: {str(e)}")
+        return None
 
 def handle_command(chat_id, command):
     if command == "/start":
-        text = "Gold Trading Bot\n\n/help - Help\n/status - Status\n/analyze - Analyze"
+        text = "Shaditradingxaubot - Gold Trading Bot\n\nCommands:\n/help\n/status\n/analyze"
     
     elif command == "/help":
-        text = "Commands:\n/start\n/help\n/status\n/analyze\n\nEducational only"
+        text = "Commands:\n/start - Start\n/help - Help\n/status - Bot status\n/analyze - Get live analysis"
     
     elif command == "/status":
-        text = "Status: ONLINE\nSymbol: XAUUSD\nData: LIVE"
+        text = "Status: ONLINE\nBot: Working\nData: LIVE"
     
     elif command == "/analyze":
-        log_message("===== GETTING LIVE PRICE =====")
-        real_price = get_real_gold_price()
-        log_message("===== PRICE RECEIVED =====")
+        log_message("========== ANALYZE REQUEST ==========")
+        price = get_gold_price()
+        log_message(f"Price result: {price}")
+        log_message("========== END REQUEST ==========")
         
-        if real_price is None:
-            text = "ERROR getting price\nTry again"
+        if price is None:
+            text = "Cannot get price now\nPlease try again in 30 seconds"
         else:
-            stop_loss = real_price - (real_price * 0.005)
-            target = real_price + (real_price * 0.01)
+            # Calculate points
+            entry = price
+            stop = price - (price * 0.005)
+            target = price + (price * 0.01)
+            risk = price - stop
+            reward = target - price
+            ratio = reward / risk if risk > 0 else 0
             
             text = (
-                f"LIVE ANALYSIS\n\n"
-                f"Time: {datetime.now().strftime('%H:%M:%S')}\n"
-                f"PRICE: ${real_price}\n\n"
-                f"Entry: ${real_price}\n"
-                f"Stop: ${stop_loss:.2f}\n"
-                f"Target: ${target:.2f}\n\n"
-                f"Live data - no cache"
+                f"<b>LIVE GOLD PRICE ANALYSIS</b>\n\n"
+                f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"<b>Price: ${price:.2f}</b>\n\n"
+                f"<b>Entry:</b> ${entry:.2f}\n"
+                f"<b>Stop Loss:</b> ${stop:.2f}\n"
+                f"<b>Take Profit:</b> ${target:.2f}\n\n"
+                f"Risk: ${risk:.2f}\n"
+                f"Reward: ${reward:.2f}\n"
+                f"Risk/Reward: 1:{ratio:.2f}"
             )
     
     else:
-        text = "Unknown command"
+        text = "Command not found"
     
     send_message(chat_id, text)
 
 def main():
-    log_message("Bot started")
+    log_message("Bot started successfully")
     offset = 0
     
     while True:
@@ -167,14 +133,15 @@ def main():
                 chat_id = message["chat"]["id"]
                 text = message.get("text", "").strip()
                 
+                log_message(f"Message: {text}")
+                
                 if text.startswith("/"):
                     handle_command(chat_id, text)
-                else:
-                    send_message(chat_id, "OK")
         
         except KeyboardInterrupt:
             break
         except Exception as e:
+            log_message(f"Error: {e}")
             time.sleep(2)
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@
 import os
 import requests
 import json
-from flask import Flask, request
+from flash import Flash, request
 from datetime import datetime
 
 # Configuration

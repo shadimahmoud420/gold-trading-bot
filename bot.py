@@ -8,8 +8,8 @@ from flask import Flask, request
 from datetime import datetime
 
 # Configuration
-BOT_TOKEN = "8757189559:AAFw0VLGnEwKBtxqIWwTouB9nJxz6IBPXn0"
-API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
+BOT_TOKEN = "8674008828:AAHCoFB_bJmEAmwWkt6rl8q5zKkude2RslQ"
+API_URL = f"https://api.telegram.org/bot8674008828:AAHCoFB_bJmEAmwWkt6rl8q5zKkude2RslQ"
 WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL", "https://goldbot.onrender.com")
 
 app = Flask(__name__)

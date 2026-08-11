@@ -8,11 +8,9 @@ from datetime import datetime, timedelta
 BOT_TOKEN = "8674008828:AAHCoFB_bJmEAmwWkt6rl8q5zKkude2RslQ"
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-# متغير لتخزين آخر سعر دخله المستخدم
 CURRENT_PRICE = None
 
-def get_palestine_time():
-    """الوقت بتوقيت فلسطين"""
+def get_time():
     utc_now = datetime.utcnow()
     palestine_time = utc_now + timedelta(hours=3)
     return palestine_time.strftime('%H:%M:%S %d-%m-%Y')
@@ -27,67 +25,82 @@ def send_message(chat_id, text):
     except:
         pass
 
-def handle_command(chat_id, command):
+def main():
     global CURRENT_PRICE
-    time_str = get_palestine_time()
+    offset = 0
     
-    if command == "/start":
-        text = (
-            "🤖 مرحباً بك!\n\n"
-            "بوت تحليل الذهب XAUUSD\n\n"
-            "الأوامر:\n"
-            "/help - المساعدة\n"
-            "/status - الحالة\n"
-            "/analyze - التحليل\n"
-            "/price [السعر] - أدخل السعر الحالي\n\n"
-            "مثال: /price 4423.50"
-        )
-    
-    elif command == "/help":
-        text = (
-            "الاوامر:\n"
-            "/start - البدء\n"
-            "/help - المساعدة\n"
-            "/status - الحالة\n"
-            "/analyze - التحليل\n"
-            "/price [السعر] - أدخل السعر من Trading View\n\n"
-            "مثال: /price 4423.50"
-        )
-    
-    elif command == "/status":
-        if CURRENT_PRICE:
-            text = (
-                f"🟢 البوت: يعمل\n"
-                f"الرمز: XAUUSD\n"
-                f"آخر سعر: ${CURRENT_PRICE:,.2f}\n"
-                f"الوقت: {time_str}"
+    while True:
+        try:
+            response = requests.post(
+                f"{API_URL}/getUpdates",
+                json={"offset": offset, "timeout": 30},
+                timeout=35
             )
-        else:
-            text = (
-                "⚠️ لم تدخل السعر بعد\n"
-                "استخدم: /price 4423.50"
-            )
-    
-    elif command == "/analyze":
-        if CURRENT_PRICE is None:
-            text = "⚠️ أدخل السعر أولاً\nاستخدم: /price [السعر]"
-        else:
-            price = CURRENT_PRICE
-            atr = price * 0.005
-            stop_loss = round(price - atr, 2)
-            target = round(price + (atr * 2), 2)
-            risk = round(price - stop_loss, 2)
-            reward = round(target - price, 2)
-            ratio = round(reward / risk, 2) if risk > 0 else 0
             
-            text = (
-                f"📊 تحليل الذهب الحي\n\n"
-                f"⏰ الوقت: {time_str}\n"
-                f"💰 السعر الحالي: ${price:,.2f}\n\n"
-                f"🟢 إشارة شراء\n"
-                f"نسبة التأكيد: 85%\n\n"
-                f"📈 نقاط التداول:\n"
-                f"├─ الدخول: ${price:,.2f}\n"
-                f"├─ الوقف: ${stop_loss:,.2f}\n"
-                f"└─ الهدف: ${target:,.2f}\n\n"
-                f"💰 إدارة المخاط
+            data = response.json()
+            
+            if not data.get("ok"):
+                time.sleep(2)
+                continue
+            
+            for update in data.get("result", []):
+                offset = update["update_id"] + 1
+                
+                if "message" not in update:
+                    continue
+                
+                message = update["message"]
+                chat_id = message["chat"]["id"]
+                text = message.get("text", "").strip()
+                
+                time_str = get_time()
+                
+                if text == "/start":
+                    send_message(chat_id, "Shaditradingxaubot - Gold Trading Analysis\n\nCommands:\n/price [amount] - Enter gold price\n/analyze - Get analysis\n/status - Bot status\n/help - Help")
+                
+                elif text == "/help":
+                    send_message(chat_id, "Commands:\n/start - Start\n/help - Help\n/price 4423.50 - Enter current price\n/analyze - Analyze\n/status - Status")
+                
+                elif text == "/status":
+                    if CURRENT_PRICE:
+                        send_message(chat_id, f"Status: ONLINE\nSymbol: XAUUSD\nCurrent Price: ${CURRENT_PRICE:,.2f}\nTime: {time_str}")
+                    else:
+                        send_message(chat_id, "Status: ONLINE\nPlease enter price first: /price 4423.50")
+                
+                elif text.startswith("/price "):
+                    try:
+                        price_str = text.replace("/price ", "").strip()
+                        price = float(price_str)
+                        
+                        if 4000 < price < 5000:
+                            CURRENT_PRICE = price
+                            send_message(chat_id, f"Price updated: ${price:,.2f}\n\nUse /analyze for analysis")
+                        else:
+                            send_message(chat_id, "Invalid price\nPrice must be between 4000-5000")
+                    except:
+                        send_message(chat_id, "Invalid format\nUse: /price 4423.50")
+                
+                elif text == "/analyze":
+                    if CURRENT_PRICE is None:
+                        send_message(chat_id, "Enter price first\nUse: /price 4423.50")
+                    else:
+                        price = CURRENT_PRICE
+                        atr = price * 0.005
+                        stop_loss = round(price - atr, 2)
+                        target = round(price + (atr * 2), 2)
+                        risk = round(price - stop_loss, 2)
+                        reward = round(target - price, 2)
+                        ratio = round(reward / risk, 2) if risk > 0 else 0
+                        
+                        analysis = f"GOLD ANALYSIS\n\nTime: {time_str}\nPrice: ${price:,.2f}\n\nSignal: BUY\nConfidence: 85%\n\nEntry: ${price:,.2f}\nStop Loss: ${stop_loss:,.2f}\nTarget: ${target:,.2f}\n\nRisk: ${risk:.2f}\nReward: ${reward:.2f}\nRatio: 1:{ratio}"
+                        
+                        send_message(chat_id, analysis)
+                
+                else:
+                    send_message(chat_id, "Unknown command\n/help for commands")
+        
+        except:
+            time.sleep(2)
+
+if __name__ == "__main__":
+    main()

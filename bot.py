@@ -18,123 +18,129 @@ def send_message(chat_id, text):
             json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             timeout=10
         )
-        log_message(f"OK Sent")
     except Exception as e:
         log_message(f"ERROR: {e}")
 
-def get_live_gold_price():
-    """Get REAL live gold price - only return if successful"""
+def get_real_gold_price():
+    """Get REAL gold price - no cache, no templates"""
     
-    # Try CoinGecko
+    prices = []
+    
+    # Source 1: Direct metals API
     try:
-        log_message("Trying CoinGecko...")
+        log_message("Fetching from metals.live...")
         response = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price?ids=gold&vs_currencies=usd",
+            "https://api.metals.live/v1/spot/gold",
             timeout=5
         )
         if response.status_code == 200:
             data = response.json()
-            if "gold" in data and "usd" in data["gold"]:
-                price = float(data["gold"]["usd"])
-                log_message(f"SUCCESS CoinGecko: ${price}")
-                return price
+            price = float(data.get("price", 0))
+            if price > 0:
+                log_message(f"metals.live: ${price}")
+                prices.append(price)
     except Exception as e:
-        log_message(f"CoinGecko failed: {e}")
+        log_message(f"metals.live ERROR: {e}")
     
-    # Try Cryptonator
+    # Source 2: Forex API
     try:
-        log_message("Trying Cryptonator...")
+        log_message("Fetching from forexapi...")
         response = requests.get(
-            "https://api.cryptonator.com/api/ticker/xau-usd",
+            "https://api.exchangerate-api.com/v4/latest/XAU",
             timeout=5
         )
         if response.status_code == 200:
             data = response.json()
-            if data.get("status") == "success":
-                price = float(data["ticker"]["price"])
-                log_message(f"SUCCESS Cryptonator: ${price}")
-                return price
+            if "rates" in data and "USD" in data["rates"]:
+                rate = float(data["rates"]["USD"])
+                price = 1 / rate if rate > 0 else 0
+                if price > 1000:
+                    log_message(f"forexapi: ${price}")
+                    prices.append(price)
     except Exception as e:
-        log_message(f"Cryptonator failed: {e}")
+        log_message(f"forexapi ERROR: {e}")
     
-    # Try YahooFinance
+    # Source 3: Twelve Data
     try:
-        log_message("Trying YahooFinance...")
+        log_message("Fetching from twelvedata...")
         response = requests.get(
-            "https://query1.finance.yahoo.com/v7/finance/quote?symbols=GC=F",
-            timeout=5,
-            headers={"User-Agent": "Mozilla/5.0"}
+            "https://api.twelvedata.com/quote?symbol=XAU/USD&apikey=demo",
+            timeout=5
         )
         if response.status_code == 200:
             data = response.json()
-            price = data["quoteResponse"]["result"][0]["regularMarketPrice"]
-            log_message(f"SUCCESS YahooFinance: ${price}")
-            return price
+            if "price" in data:
+                price = float(data["price"])
+                if price > 1000:
+                    log_message(f"twelvedata: ${price}")
+                    prices.append(price)
     except Exception as e:
-        log_message(f"YahooFinance failed: {e}")
+        log_message(f"twelvedata ERROR: {e}")
     
-    log_message("ERROR All sources failed!")
+    # Source 4: Finnhub
+    try:
+        log_message("Fetching from finnhub...")
+        response = requests.get(
+            "https://finnhub.io/api/v1/quote?symbol=XAUUSD&token=cljf96qr01qh3oj01d7g",
+            timeout=5
+        )
+        if response.status_code == 200:
+            data = response.json()
+            if "c" in data:
+                price = float(data["c"])
+                if price > 1000:
+                    log_message(f"finnhub: ${price}")
+                    prices.append(price)
+    except Exception as e:
+        log_message(f"finnhub ERROR: {e}")
+    
+    # Return average if got multiple sources
+    if prices:
+        avg_price = sum(prices) / len(prices)
+        log_message(f"FINAL PRICE: ${avg_price:.2f}")
+        return round(avg_price, 2)
+    
+    log_message("ERROR: No sources available")
     return None
-
-def calculate_analysis(price):
-    """Calculate points based on real price"""
-    if price is None:
-        return None
-    
-    atr = price * 0.005
-    stop_loss = round(price - atr, 2)
-    target = round(price + (atr * 2), 2)
-    
-    return {
-        "price": round(price, 2),
-        "stop": stop_loss,
-        "target": target,
-        "risk": round(price - stop_loss, 2),
-        "reward": round(target - price, 2),
-        "time": datetime.now().strftime('%H:%M:%S')
-    }
 
 def handle_command(chat_id, command):
     if command == "/start":
-        text = "Shaditradingxaubot\n\nGold Trading Analysis Bot\n\nCommands:\n/help - Help\n/status - Status\n/analyze - Analyze Now\n\nFor educational purposes only"
+        text = "Gold Trading Bot\n\n/help - Help\n/status - Status\n/analyze - Analyze"
     
     elif command == "/help":
-        text = "Commands:\n/start - Start\n/help - Help\n/status - Status\n/analyze - Analyze LIVE Gold Price\n\nRisk: 3%\nMin: $100\nMax: $500"
+        text = "Commands:\n/start\n/help\n/status\n/analyze\n\nEducational only"
     
     elif command == "/status":
-        text = "Bot Status: ONLINE\nSymbol: XAUUSD\nData: LIVE REAL-TIME\nReliability: 99%"
+        text = "Status: ONLINE\nSymbol: XAUUSD\nData: LIVE"
     
     elif command == "/analyze":
-        log_message("Getting LIVE price...")
-        price = get_live_gold_price()
+        log_message("===== GETTING LIVE PRICE =====")
+        real_price = get_real_gold_price()
+        log_message("===== PRICE RECEIVED =====")
         
-        if price is None:
-            text = "ERROR: Could not get price\nTry again in 30 seconds\nCheck internet"
+        if real_price is None:
+            text = "ERROR getting price\nTry again"
         else:
-            analysis = calculate_analysis(price)
+            stop_loss = real_price - (real_price * 0.005)
+            target = real_price + (real_price * 0.01)
             
             text = (
-                f"GOLD ANALYSIS - LIVE NOW\n\n"
-                f"Time: {analysis['time']}\n"
-                f"REAL PRICE: ${analysis['price']:,.2f}\n\n"
-                f"SIGNAL: BUY\n"
-                f"Confidence: 85%\n\n"
-                f"Entry: ${analysis['price']:,.2f}\n"
-                f"Stop Loss: ${analysis['stop']:,.2f}\n"
-                f"Target: ${analysis['target']:,.2f}\n\n"
-                f"Risk: ${analysis['risk']:.2f}\n"
-                f"Reward: ${analysis['reward']:.2f}\n"
-                f"Risk/Reward: 1:{analysis['reward']/analysis['risk']:.2f}\n\n"
-                f"Use DEMO account first!"
+                f"LIVE ANALYSIS\n\n"
+                f"Time: {datetime.now().strftime('%H:%M:%S')}\n"
+                f"PRICE: ${real_price}\n\n"
+                f"Entry: ${real_price}\n"
+                f"Stop: ${stop_loss:.2f}\n"
+                f"Target: ${target:.2f}\n\n"
+                f"Live data - no cache"
             )
     
     else:
-        text = "Unknown command\n/help for commands"
+        text = "Unknown command"
     
     send_message(chat_id, text)
 
 def main():
-    log_message("Bot Starting...")
+    log_message("Bot started")
     offset = 0
     
     while True:
@@ -161,18 +167,14 @@ def main():
                 chat_id = message["chat"]["id"]
                 text = message.get("text", "").strip()
                 
-                log_message(f"Message: {text[:30]}")
-                
                 if text.startswith("/"):
                     handle_command(chat_id, text)
                 else:
-                    send_message(chat_id, f"Message: {text}\n/help for commands")
+                    send_message(chat_id, "OK")
         
         except KeyboardInterrupt:
-            log_message("Bot Stopped")
             break
         except Exception as e:
-            log_message(f"ERROR: {e}")
             time.sleep(2)
 
 if __name__ == "__main__":
